@@ -210,7 +210,11 @@ class EZSpotifyLyrics:
         artist = artists[0]
         self.write(f"Using lyricwikia with artist: \"{artist}\" and title: \"{title}\"")
 
-        lyrics = lyricwikia.get_lyrics(artists[0], title)
+        try:
+            lyrics = lyricwikia.get_lyrics(artists[0], title)
+        except lyricwikia.LyricsNotFound:
+            lyrics = None
+        
         if not lyrics:
             self.write("Lyricwikia could not find lyrics.")
             return
