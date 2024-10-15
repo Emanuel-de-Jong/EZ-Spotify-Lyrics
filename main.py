@@ -106,7 +106,7 @@ class EZSpotifyLyrics:
             if not lyrics:
                 return
 
-        self.write(f"\n{lyrics}")
+        self.write(f"\n{lyrics}", True)
 
     def get_lyrics_dir_path(self, url):
         dir_name = url.split('/')[-1]
@@ -161,10 +161,8 @@ class EZSpotifyLyrics:
 
         # Remove all non-alphanumeric characters.
         title = re.sub(r'[^a-zA-Z0-9 ]', '', title)
-        for word in TITLE_WORD_BLACKLIST:
-            word_variations = [word, word.capitalize(), word.upper()]
-            for word_variation in word_variations:
-                title = title.replace(word_variation, '')
+        blacklist_str = "|".join(TITLE_WORD_BLACKLIST)
+        title = re.sub(r'\b(?:' + blacklist_str + r')\b', '', title, flags=re.IGNORECASE)
         # Combine multiple spaces into one.
         title = re.sub(r'\s+', ' ', title).strip()
 
@@ -176,8 +174,8 @@ class EZSpotifyLyrics:
 
     def download_lyrics(self, artists, title, url):
         lyrics = self.download_from_syncedlyrics(artists, title)
-        if not lyrics:
-            lyrics = self.download_from_scraper(artists, title)
+        # if not lyrics:
+        #     lyrics = self.download_from_scraper(artists, title)
         # if not lyrics:
         #     lyrics = self.download_from_xxx(artists, title)
         if not lyrics:
@@ -201,7 +199,19 @@ class EZSpotifyLyrics:
         package_name = "Syncedlyrics"
 
         self.write(f"Using {package_name} (Musixmatch, Lrclib, NetEase, Megalobiz, Genius).")
-        search_query = f"{title} {' '.join(artists)}"
+
+        # search_query = f"{title} {' '.join(artists)}"
+        search_query = title
+
+        # Check if the artist is already in the title. Often happens with remixes.
+        is_artist_in_title = True
+        for word in artists[0].split(" "):
+            if word.lower() not in search_query.lower():
+                is_artist_in_title = False
+                break
+        if not is_artist_in_title:
+            search_query = f"{search_query} {artists[0]}"
+
         self.write(f"Query: {search_query}")
 
         self.write("Searching...")
