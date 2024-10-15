@@ -50,31 +50,31 @@ class EZSpotifyLyrics:
     def handle_new_url(self, url):
         # Start new thread so the UI doesn't freeze.
         threading.Thread(target=self.get_lyrics, args=(url,)).start()
+        self.write("\nDrag & drop or CTRL+V a new Spotify link here to get the next lyrics.")
 
     def get_lyrics(self, url):
-        self.write("STARTING", True)
+        self.write("URL received. Starting lyrics search.", True)
 
+        # Remove any query parameters.
+        url = url.split("?")[0]
         url = url.strip()
+
+        self.write(url)
+
         if not url:
             self.write("The given URL is empty.")
             return
         
         if "spotify.com/track" not in url:
-            self.write(f"Invalid Spotify URL: {url}")
-            self.write("It should look like: https://open.spotify.com/track/xyz")
+            self.write("Invalid Spotify URL. It should look like: https://open.spotify.com/track/xyz")
             return
-
-        # Remove any query parameters.
-        url = url.split("?")[0]
 
         lyrics = None
         existing_lyrics_path = self.get_lyrics_dir_path(url)
         if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
-            self.write("Using saved lyrics.")
             lyrics = self.get_existing_lyrics(existing_lyrics_path)
         
         if not lyrics:
-            self.write("Getting lyrics from the internet.")
             artists, title = self.get_song_info(url)
             if not artists or not title:
                 return
@@ -83,14 +83,15 @@ class EZSpotifyLyrics:
             if not lyrics:
                 return
 
-        self.write()
-        self.write(lyrics)
+        self.write(f"\n{lyrics}")
 
     def get_lyrics_dir_path(self, url):
         dir_name = url.split('/')[-1]
         return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
 
     def get_existing_lyrics(self, dir_path):
+        self.write("Using saved lyrics.")
+
         file_path = None
         for file_name in os.listdir(dir_path):
             if file_name.endswith('.lrc'):
@@ -100,6 +101,7 @@ class EZSpotifyLyrics:
             return
         
         self.write(f"Saved lyrics found at: {file_path}")
+
         with open(file_path, 'r') as file:
             lyrics = file.read().strip()
             if not lyrics:
@@ -109,7 +111,7 @@ class EZSpotifyLyrics:
             return lyrics
 
     def get_song_info(self, url):
-        self.write(f"Getting song information from: {url}")
+        self.write(f"Getting song information from the URL page...")
         response = requests.get(url, timeout=10)
         if response.status_code != 200:
             self.write(f"Failed to fetch song information. HTTP Status: {response.status_code}")
@@ -144,7 +146,7 @@ class EZSpotifyLyrics:
 
     def download_lyrics(self, artists, title, url):
         search_query = f"{title} {' '.join(artists)}"
-        self.write(f"Searching for lyrics using syncedlyrics with query: {search_query}")
+        self.write(f"Using syncedlyrics with query: {search_query}")
         
         save_path = None
         if SHOULD_SAVE_LYRICS:
@@ -152,6 +154,7 @@ class EZSpotifyLyrics:
             os.makedirs(save_path, exist_ok=True)
             save_path += f"{', '.join(artists)} - {title}.lrc"
 
+        self.write("Searching...")
         lyrics = syncedlyrics.search(search_query, save_path=save_path)
         if not lyrics:
             self.write("Syncedlyrics could not find lyrics for the song.")
