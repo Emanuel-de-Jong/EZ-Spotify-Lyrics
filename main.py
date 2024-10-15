@@ -15,7 +15,11 @@ WINDOW_HEIGHT = 800
 FONT_SIZE = 20
 
 TITLE_WORD_BLACKLIST = [
-    "remix", "mix", "live", "extended", "radio", "edit", "version", "feat", "ft", "featuring", "asot"
+    "mix", "mixed", "remix", "edit",
+    "extended", "radio",
+    "feat", "ft", "featuring",
+    "original", "version", "live", "edition", "anthem",
+    "asot"
 ]
 
 class EZSpotifyLyrics:
