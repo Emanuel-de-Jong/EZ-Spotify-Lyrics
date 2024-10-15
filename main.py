@@ -1,6 +1,7 @@
 import os
 import re
 import csv
+import time
 import threading
 import tkinter as tk
 from tkinterdnd2 import DND_TEXT, TkinterDnD
@@ -167,6 +168,11 @@ class EZSpotifyLyrics:
                         song_info_str = f"{', '.join(artists)} - {title}"
                         self.write(f"\nProcessing track {idx+1}/{len(tracks)}: {song_info_str}")
                         self.process_track(track_id, artists, title)
+
+                        # 5 second delay every 10 tracks to avoid rate limiting.
+                        if (idx + 1) % 10 == 0:
+                            self.write(f"\nPausing for 5 seconds to avoid rate limiting...")
+                            time.sleep(5)
                     else:
                         self.write(f"Skipping invalid track entry at position {idx+1}")
             else:
