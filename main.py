@@ -10,6 +10,7 @@ import syncedlyrics
 LYRICS_PATH = "Lyrics"
 SHOULD_SAVE_LYRICS = True
 SHOULD_USE_SAVED_LYRICS = True
+SHOULD_CUT_TITLE_AT_DASH = True
 WINDOW_WIDTH = 1600
 WINDOW_HEIGHT = 800
 FONT_SIZE = 20
@@ -160,6 +161,8 @@ class EZSpotifyLyrics:
         title, artist_str = page_title.split(split_str)
 
         # Remove all non-alphanumeric characters.
+        if SHOULD_CUT_TITLE_AT_DASH:
+            title = title.split(" - ")[0]
         title = re.sub(r'[^a-zA-Z0-9 ]', '', title)
         blacklist_str = "|".join(TITLE_WORD_BLACKLIST)
         title = re.sub(r'\b(?:' + blacklist_str + r')\b', '', title, flags=re.IGNORECASE)
