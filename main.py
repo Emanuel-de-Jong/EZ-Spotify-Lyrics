@@ -94,20 +94,24 @@ class EZSpotifyLyrics:
             return
 
         lyrics = None
+        song_info_str = None
         existing_lyrics_path = self.get_lyrics_dir_path(url)
         if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
-            lyrics = self.get_existing_lyrics(existing_lyrics_path)
+            lyrics, song_info_str = self.get_existing_lyrics(existing_lyrics_path)
         
         if not lyrics:
             artists, title = self.get_song_info(url)
             if not artists or not title:
                 return
+            
+            song_info_str = self.song_info_to_string(artists, title)
 
             lyrics = self.download_lyrics(artists, title, url)
             if not lyrics:
                 return
 
-        self.write(f"\n{lyrics}", True)
+        self.write(song_info_str, True)
+        self.write(f"\n{lyrics}")
 
     def get_lyrics_dir_path(self, url):
         dir_name = url.split('/')[-1]
@@ -117,9 +121,11 @@ class EZSpotifyLyrics:
         self.write("Using saved lyrics.")
 
         file_path = None
+        file_name = None
         for file_name in os.listdir(dir_path):
             if file_name.endswith('.lrc'):
                 file_path = os.path.join(dir_path, file_name)
+                break
         if not file_path:
             self.write("Could not find saved lyrics.")
             return
@@ -132,7 +138,7 @@ class EZSpotifyLyrics:
                 self.write("Saved lyrics file is empty or corrupted.")
                 return
 
-            return lyrics
+        return lyrics, file_name[:-4]
 
     def get_song_info(self, url):
         self.write(f"Getting song information from the URL page...")
@@ -169,7 +175,10 @@ class EZSpotifyLyrics:
         # Combine multiple spaces into one.
         title = re.sub(r'\s+', ' ', title).strip()
 
-        artists = artist_str.split(" | ")[0].split(", ")
+        artist_str = artist_str.split(" | ")[0]
+        artist_str = re.sub(r'[^a-zA-Z0-9, ]', '', artist_str)
+        artist_str = re.sub(r'\s+', ' ', artist_str).strip()
+        artists = artist_str.split(", ")
 
         self.write(f"Title: {title}")
         self.write(f"Artists: {', '.join(artists)}")
@@ -190,13 +199,16 @@ class EZSpotifyLyrics:
             save_dir_path = self.get_lyrics_dir_path(url)
             os.makedirs(save_dir_path, exist_ok=True)
 
-            save_file_path = os.path.join(save_dir_path, f"{', '.join(artists)} - {title}.lrc")
+            save_file_path = os.path.join(save_dir_path, f"{self.song_info_to_string(artists, title)}.lrc")
             with open(save_file_path, 'w') as file:
                 file.write(lyrics)
 
             self.write(f"Lyrics saved at: {save_file_path}")
 
         return lyrics
+    
+    def song_info_to_string(self, artists, title):
+        return f"{', '.join(artists)} - {title}"
     
     def download_from_syncedlyrics(self, artists, title):
         package_name = "Syncedlyrics"
