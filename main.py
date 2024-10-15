@@ -120,28 +120,40 @@ class EZSpotifyLyrics:
                 self.write("Lyrics search was previously unsuccessful for this URL.")
                 return
             
-            lyrics = self.get_existing_lyrics(file_name)
+            lyrics = self.load_lyrics(file_name)
             song_info_str = file_name.replace(".lrc", "")
 
-        self.lyrics_data[url] = ""
-
         if not lyrics:
+            self.lyrics_data[url] = ""
+
             artists, title = self.get_song_info(url)
             if not artists or not title:
                 return
             
-            song_info_str = self.song_info_to_string(artists, title)
-
             lyrics = self.download_lyrics(artists, title, url)
             if not lyrics:
                 return
 
-            self.lyrics_data[url] = f"{song_info_str}.lrc"
+            song_info_str = f"{', '.join(artists)} - {title}"
+            file_name = f"{song_info_str}.lrc"
+            self.save_lyrics(lyrics, file_name)
+            self.lyrics_data[url] = file_name
 
         self.write(song_info_str, True)
         self.write(f"\n{lyrics}")
 
-    def get_existing_lyrics(self, file_name):
+    def save_lyrics(self, lyrics, file_name):
+        if not SHOULD_SAVE_LYRICS:
+            return
+        
+        file_path = os.path.join(LYRICS_PATH, file_name)
+        os.makedirs(LYRICS_PATH, exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(lyrics)
+
+        self.write(f"Lyrics saved at: {file_path}")
+
+    def load_lyrics(self, file_name):
         self.write("Using saved lyrics.")
 
         file_path = os.path.join(LYRICS_PATH, file_name)
@@ -213,20 +225,7 @@ class EZSpotifyLyrics:
             return
 
         self.write(f"Lyrics found")
-
-        if SHOULD_SAVE_LYRICS:
-            save_file_name = f"{self.song_info_to_string(artists, title)}.lrc"
-            save_file_path = os.path.join(LYRICS_PATH, save_file_name)
-            os.makedirs(LYRICS_PATH, exist_ok=True)
-            with open(save_file_path, 'w', encoding='utf-8') as file:
-                file.write(lyrics)
-
-            self.write(f"Lyrics saved at: {save_file_path}")
-
         return lyrics
-
-    def song_info_to_string(self, artists, title):
-        return f"{', '.join(artists)} - {title}"
     
     def download_from_syncedlyrics(self, artists, title):
         package_name = "Syncedlyrics"
