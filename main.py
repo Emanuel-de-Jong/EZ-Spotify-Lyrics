@@ -221,6 +221,7 @@ class EZSpotifyLyrics:
         url = f"https://www.azlyrics.com/lyrics/{artist}/{title}.html"
         self.write(f"URL: {url}")
 
+        self.write("Searching...")
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
@@ -229,13 +230,13 @@ class EZSpotifyLyrics:
             return
 
         soup = BeautifulSoup(response.text, 'html.parser')
-        # Lyrics are usually stored in divs without a class.
-        divs = soup.find_all("div", class_=None)
-        if not divs or len(divs) < 2:
+        # Lyrics are stored in the first empty div.
+        divs = soup.find_all("div", class_=None, id=None)
+        if not divs or len(divs) < 1:
             self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
 
-        lyrics = divs[1].get_text(separator="\n").strip()
+        lyrics = divs[0].get_text(separator="\n").strip()
         if not lyrics:
             self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
