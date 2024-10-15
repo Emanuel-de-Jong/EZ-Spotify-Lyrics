@@ -27,14 +27,16 @@ def create_window():
     root.title("EZ Spotify Lyrics")
     root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
+    root.drop_target_register(DND_TEXT)
+    root.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
+    root.bind("<Control-v>", lambda e: get_lyrics(root.clipboard_get().strip()))
+
     scrollbar = tk.Scrollbar(root)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    text_box = tk.Text(root, yscrollcommand=scrollbar.set)
-    text_box.drop_target_register(DND_TEXT)
-    text_box.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
-    text_box.pack(expand=True, fill=tk.BOTH)
-    text_box.insert(tk.END, "Drag & drop a Spotify link here to get the lyrics.")
+    text_box = tk.Text(root, yscrollcommand=scrollbar.set, font=("Helvetica", FONT_SIZE))
+    text_box.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+    text_box.insert(tk.END, "Drag & drop or CTRL+V a Spotify link here to get the lyrics.")
 
     scrollbar.config(command=text_box.yview)
 
@@ -46,6 +48,9 @@ def write(text="", should_clear=False):
 
 def get_lyrics(url):
     write("STARTING", True)
+
+    # Remove any query parameters.
+    url = url.split("?")[0]
 
     lyrics = None
     existing_lyrics_path = get_lyrics_dir_path(url)
@@ -82,6 +87,11 @@ def get_existing_lyrics(dir_path):
         return file.read()
 
 def get_song_info(url):
+    if "spotify.com/track" not in url:
+        write(f"Invalid Spotify URL: {url}")
+        write("It should look like: https://open.spotify.com/track/xyz")
+        return
+
     write(f"Getting song information from: {url}")
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
