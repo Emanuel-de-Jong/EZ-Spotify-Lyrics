@@ -1,11 +1,11 @@
 import os
 import re
+import threading
 import tkinter as tk
 from tkinterdnd2 import DND_TEXT, TkinterDnD
 import requests
 from bs4 import BeautifulSoup
 import syncedlyrics
-
 
 LYRICS_PATH = "Lyrics"
 SHOULD_SAVE_LYRICS = True
@@ -25,8 +25,8 @@ class EZSpotifyLyrics:
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
         self.root.drop_target_register(DND_TEXT)
-        self.root.dnd_bind('<<Drop>>', lambda e: self.get_lyrics(e.data))
-        self.root.bind("<Control-v>", lambda e: self.get_lyrics(root.clipboard_get().strip()))
+        self.root.dnd_bind('<<Drop>>', lambda e: self.handle_new_url(e.data))
+        self.root.bind("<Control-v>", lambda e: self.handle_new_url(root.clipboard_get().strip()))
 
         self.scrollbar = tk.Scrollbar(root)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -42,6 +42,10 @@ class EZSpotifyLyrics:
         if should_clear:
             self.text_box.delete(1.0, tk.END)
         self.text_box.insert(tk.END, text)
+
+    def handle_new_url(self, url):
+        # Start new thread so the UI doesn't freeze.
+        threading.Thread(target=self.get_lyrics, args=(url,)).start()
 
     def get_lyrics(self, url):
         self.write("STARTING", True)
@@ -115,7 +119,7 @@ class EZSpotifyLyrics:
         artists = artist_str.split(" | ")[0].split(", ")
 
         self.write(f"Title: {title}")
-        self.write(f"Aritsts: {', '.join(artists)}")
+        self.write(f"Artists: {', '.join(artists)}")
         return artists, title
 
     def download_lyrics(self, artists, title, url):
