@@ -23,6 +23,8 @@ TITLE_WORD_BLACKLIST = [
 ]
 
 class EZSpotifyLyrics:
+    LYRICS_PACKAGE_FAIL_MSG = " could not find lyrics."
+
     is_lyrics_search_ongoing = False
 
     def __init__(self, root):
@@ -174,6 +176,8 @@ class EZSpotifyLyrics:
 
     def download_lyrics(self, artists, title, url):
         lyrics = self.download_from_syncedlyrics(artists, title)
+        if not lyrics:
+            lyrics = self.download_from_scraper(artists, title)
         # if not lyrics:
         #     lyrics = self.download_from_xxx(artists, title)
         if not lyrics:
@@ -194,25 +198,59 @@ class EZSpotifyLyrics:
         return lyrics
     
     def download_from_syncedlyrics(self, artists, title):
-        self.write(f"Using syncedlyrics (Musixmatch, Lrclib, NetEase, Megalobiz, Genius).")
+        package_name = "Syncedlyrics"
+
+        self.write(f"Using {package_name} (Musixmatch, Lrclib, NetEase, Megalobiz, Genius).")
         search_query = f"{title} {' '.join(artists)}"
-        self.write(f"Query: \"{search_query}\"")
+        self.write(f"Query: {search_query}")
 
         self.write("Searching...")
         lyrics = syncedlyrics.search(search_query, save_path=None)
         if not lyrics:
-            self.write("Syncedlyrics could not find lyrics.")
+            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
 
         return lyrics
+
+    def download_from_scraper(self, artists, title):
+        package_name = "Scraper"
+
+        self.write(f"Using {package_name} (AZLyrics).")
+        artist = artists[0].lower().replace(" ", "")
+        title = title.lower().replace(" ", "")
+        url = f"https://www.azlyrics.com/lyrics/{artist}/{title}.html"
+        self.write(f"URL: {url}")
+
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            self.write(f"Error: {str(e)}")
+            return
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Lyrics are usually stored in divs without a class.
+        divs = soup.find_all("div", class_=None)
+        if not divs or len(divs) < 2:
+            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
+            return
+
+        lyrics = divs[1].get_text(separator="\n").strip()
+        if not lyrics:
+            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
+            return
+        
+        return lyrics
     
     def download_from_xxx(self, artists, title):
-        self.write(f"Using xxx (source1, source2).")
+        package_name = "Xxx"
+
+        self.write(f"Using {package_name} (source1, source2).")
 
         self.write("Searching...")
         lyrics = None
         if not lyrics:
-            self.write("Xxx could not find lyrics.")
+            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
 
         return lyrics
