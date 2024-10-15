@@ -7,6 +7,8 @@ from tkinterdnd2 import DND_TEXT, TkinterDnD
 import requests
 from bs4 import BeautifulSoup
 import syncedlyrics
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 LYRICS_PATH = "Lyrics"
 CSV_FILE = "lyrics_data.csv"
@@ -50,11 +52,26 @@ class EZSpotifyLyrics:
 
         self.lyrics_data = self.load_lyrics_data()
 
+        # Check for Spotify API credentials
+        self.spotipy_available = False
+        try:
+            self.spotipy = spotipy
+            client_id = os.getenv("SPOTIPY_CLIENT_ID")
+            client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+            if client_id and client_secret:
+                self.sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials())
+                self.spotipy_available = True
+            else:
+                self.sp = None
+        except ImportError:
+            self.spotipy = None
+            self.sp = None
+
     def save_lyrics_data(self):
         with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
-            for url, file_name in self.lyrics_data.items():
-                writer.writerow([url, file_name])
+            for track_id, file_name in self.lyrics_data.items():
+                writer.writerow([track_id, file_name])
 
     def load_lyrics_data(self):
         if not os.path.exists(CSV_FILE):
@@ -70,7 +87,7 @@ class EZSpotifyLyrics:
         
         self.handle_new_url(event.data)
 
-    def handle_paste(self):
+    def handle_paste(self, event=None):
         if self.is_lyrics_search_ongoing:
             return
         
@@ -84,6 +101,7 @@ class EZSpotifyLyrics:
         if should_clear:
             self.text_box.delete(1.0, tk.END)
         self.text_box.insert(tk.END, text)
+        self.text_box.see(tk.END)  # Auto-scroll to the end
 
     def handle_new_url(self, url):
         threading.Thread(target=self.start_lyrics_search, args=(url,)).start()
@@ -107,59 +125,185 @@ class EZSpotifyLyrics:
         if not url:
             self.write("The given URL is empty.")
             return
-        
-        if "spotify.com/track" not in url:
-            self.write("Invalid Spotify URL. It should look like: https://open.spotify.com/track/xyz")
+
+        if "spotify.com/track" in url:
+            self.write("Detected a track URL.")
+            track_id = url.split("track/")[1]
+            # Get track info from Spotify web page
+            track = self.get_track_info_web(track_id)
+            if not track:
+                self.write("Could not retrieve track information.")
+                return
+            title = track['title']
+            artists = track['artists']
+            song_info_str = f"{', '.join(artists)} - {title}"
+            self.write(f"Processing track: {song_info_str}")
+            self.process_track(track_id, artists, title)
+        elif "spotify.com/playlist" in url:
+            self.write("Detected a playlist URL.")
+            playlist_id = url.split("playlist/")[1].split("?")[0]
+            tracks = []
+            if self.spotipy_available:
+                self.write("Playlist support is enabled using Spotify API.")
+                # Get tracks using spotipy
+                try:
+                    results = self.sp.playlist_items(playlist_id)
+                    tracks = results['items']
+                    # Handle pagination
+                    while results['next']:
+                        results = self.sp.next(results)
+                        tracks.extend(results['items'])
+                except Exception as e:
+                    self.write(f"Error accessing playlist: {str(e)}")
+                    return
+
+                self.write(f"Found {len(tracks)} tracks in the playlist.")
+                for idx, item in enumerate(tracks):
+                    track = item.get('track')
+                    if track and 'id' in track:
+                        track_id = track['id']
+                        title = track.get('name', 'Unknown Title')
+                        artists = [artist['name'] for artist in track.get('artists', [])]
+                        song_info_str = f"{', '.join(artists)} - {title}"
+                        self.write(f"\nProcessing track {idx+1}/{len(tracks)}: {song_info_str}")
+                        self.process_track(track_id, artists, title)
+                    else:
+                        self.write(f"Skipping invalid track entry at position {idx+1}")
+            else:
+                self.write("Playlist support is disabled (missing Spotify API credentials).")
+                self.write("Attempting to retrieve playlist tracks without API (may not be reliable).")
+                # Attempt to scrape playlist page
+                tracks = self.get_playlist_tracks_web(playlist_id)
+                if not tracks:
+                    self.write("Could not retrieve playlist tracks without API.")
+                    return
+
+                self.write(f"Found {len(tracks)} tracks in the playlist.")
+                for idx, track in enumerate(tracks):
+                    track_id = track['id']
+                    title = track['title']
+                    artists = track['artists']
+                    song_info_str = f"{', '.join(artists)} - {title}"
+                    self.write(f"\nProcessing track {idx+1}/{len(tracks)}: {song_info_str}")
+                    self.process_track(track_id, artists, title)
+        else:
+            self.write("Invalid Spotify URL. It should be a track or playlist URL.")
             return
 
+    def get_track_info_web(self, track_id):
+        # Attempt to get track info by scraping the track page
+        url = f"https://open.spotify.com/track/{track_id}"
+        self.write(f"Fetching track info from {url}")
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            self.write(f"Error fetching track page: {str(e)}")
+            return None
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Extract track title and artist from the page metadata
+        title_tag = soup.find('meta', property='og:title')
+        artist_tag = soup.find('meta', property='og:description')
+        if title_tag and artist_tag:
+            title = title_tag['content']
+            artists = artist_tag['content'].replace(' · Song · ', '').split(', ')
+            return {'id': track_id, 'title': title, 'artists': artists}
+        else:
+            return None
+
+    def get_playlist_tracks_web(self, playlist_id):
+        # Attempt to get playlist tracks by scraping the playlist page
+        url = f"https://open.spotify.com/playlist/{playlist_id}"
+        self.write(f"Fetching playlist info from {url}")
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            self.write(f"Error fetching playlist page: {str(e)}")
+            return None
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Parse initial state from page scripts
+        scripts = soup.find_all('script')
+        for script in scripts:
+            if 'Spotify.Entity' in script.text:
+                json_text = script.text.strip().split('Spotify.Entity = ')[1].rsplit(';', 1)[0]
+                import json
+                try:
+                    data = json.loads(json_text)
+                    tracks = []
+                    for item in data['tracks']['items']:
+                        track_info = item['track']
+                        track_id = track_info['uri'].split(':')[-1]
+                        title = track_info['name']
+                        artists = [artist['name'] for artist in track_info['artists']]
+                        tracks.append({'id': track_id, 'title': title, 'artists': artists})
+                    return tracks
+                except Exception as e:
+                    self.write(f"Error parsing playlist data: {str(e)}")
+                    return None
+        self.write("Could not find playlist data in page scripts.")
+        return None
+
+    def process_track(self, track_id, artists, title):
         lyrics = None
-        song_info_str = None
-        if SHOULD_USE_SAVED_LYRICS and url in self.lyrics_data:
-            file_name = self.lyrics_data[url]
+        song_info_str = f"{', '.join(artists)} - {title}"
+        key = track_id
+        if SHOULD_USE_SAVED_LYRICS and key in self.lyrics_data:
+            file_name = self.lyrics_data[key]
             if not file_name:
-                self.write("Lyrics search was previously unsuccessful for this URL.")
+                self.write(f"Lyrics search was previously unsuccessful for {song_info_str}.")
                 return
-            
+
             lyrics = self.load_lyrics(file_name)
             song_info_str = file_name.replace(".lrc", "")
 
         if not lyrics:
-            self.lyrics_data[url] = ""
+            self.lyrics_data[key] = ""
 
-            artists, title = self.get_song_info(url)
-            if not artists or not title:
-                return
-            
-            lyrics = self.download_lyrics(artists, title, url)
+            lyrics = self.download_lyrics(artists, title)
             if not lyrics:
+                self.write(f"Could not find lyrics for {song_info_str}.")
                 return
 
-            song_info_str = f"{', '.join(artists)} - {title}"
-            file_name = f"{song_info_str}.lrc"
+            file_name = f"{self.safe_filename(song_info_str)}.lrc"
             self.save_lyrics(lyrics, file_name)
-            self.lyrics_data[url] = file_name
+            self.lyrics_data[key] = file_name
 
-        self.write(song_info_str, True)
+        self.write(song_info_str)
         self.write(f"\n{lyrics}")
+
+    def safe_filename(self, filename):
+        # Replace invalid characters for filenames
+        return "".join(c if c.isalnum() or c in " -_." else "_" for c in filename)
 
     def save_lyrics(self, lyrics, file_name):
         if not SHOULD_SAVE_LYRICS:
             return
-        
+
+        # Replace invalid filename characters
+        file_name = self.safe_filename(file_name)
+
         file_path = os.path.join(LYRICS_PATH, file_name)
         os.makedirs(LYRICS_PATH, exist_ok=True)
+
+        self.write(f"Saving lyrics to file: {file_path}")
+        
         with open(file_path, 'w', encoding='utf-8') as file:
             file.write(lyrics)
 
         self.write(f"Lyrics saved at: {file_path}")
 
     def load_lyrics(self, file_name):
-        self.write("Using saved lyrics.")
+        file_name = self.safe_filename(file_name)  # Ensure filename safety
 
         file_path = os.path.join(LYRICS_PATH, file_name)
+        self.write(f"Looking for saved lyrics at: {file_path}")
+
         if not os.path.exists(file_path):
             self.write("Saved lyrics file is missing.")
-            return
+            return None
 
         self.write(f"Saved lyrics found at: {file_path}")
 
@@ -167,66 +311,19 @@ class EZSpotifyLyrics:
             lyrics = file.read().strip()
             if not lyrics:
                 self.write("Saved lyrics file is empty or corrupted.")
-                return
+                return None
 
         return lyrics
 
-    def get_song_info(self, url):
-        self.write(f"Getting song information from the URL page...")
-        try:
-            response = requests.get(url, timeout=10)
-            # Raise exception for non-2xx status codes
-            response.raise_for_status()
-        except requests.RequestException as e:
-            self.write(f"Error: {str(e)}")
-            return
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-        page_title = soup.title.string if soup.title else None
-        if not page_title:
-            self.write("Could not retrieve page title. Invalid response from Spotify.")
-            return
-        self.write(f"Page title: {page_title}")
-
-        split_str = " song by "
-        if " and lyrics " in page_title:
-            split_str = " song and lyrics by "
-        if split_str not in page_title:
-            self.write("Could not extract song information from the page title.")
-            return
-
-        title, artist_str = page_title.split(split_str)
-
-        # Remove all non-alphanumeric characters.
-        if SHOULD_CUT_TITLE_AT_DASH:
-            title = title.split(" - ")[0]
-        title = re.sub(r'[^a-zA-Z0-9 ]', '', title)
-        blacklist_str = "|".join(TITLE_WORD_BLACKLIST)
-        title = re.sub(r'\b(?:' + blacklist_str + r')\b', '', title, flags=re.IGNORECASE)
-        # Combine multiple spaces into one.
-        title = re.sub(r'\s+', ' ', title).strip()
-
-        artist_str = artist_str.split(" | ")[0]
-        # artist_str = re.sub(r'[^a-zA-Z0-9, ]', '', artist_str)
-        artist_str = re.sub(r'\s+', ' ', artist_str).strip()
-        artists = artist_str.split(", ")
-
-        self.write(f"Title: {title}")
-        self.write(f"Artists: {', '.join(artists)}")
-        return artists, title
-
-    def download_lyrics(self, artists, title, url):
+    def download_lyrics(self, artists, title):
         lyrics = self.download_from_syncedlyrics(artists, title)
-        # if not lyrics:
-        #     lyrics = self.download_from_scraper(artists, title)
-        # if not lyrics:
-        #     lyrics = self.download_from_xxx(artists, title)
+        # You can add additional methods to download lyrics from other sources if needed
         if not lyrics:
             return
 
         self.write(f"Lyrics found")
         return lyrics
-    
+
     def download_from_syncedlyrics(self, artists, title):
         package_name = "Syncedlyrics"
 
@@ -252,50 +349,6 @@ class EZSpotifyLyrics:
             # All providers but custom search order.
             providers=["Musixmatch", "Genius", "Lrclib", "NetEase", "Megalobiz"],
             save_path=None)
-        if not lyrics:
-            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
-            return
-
-        return lyrics
-
-    def download_from_scraper(self, artists, title):
-        package_name = "Scraper"
-
-        self.write(f"Using {package_name} (AZLyrics).")
-        artist = artists[0].lower().replace(" ", "")
-        title = title.lower().replace(" ", "")
-        url = f"https://www.azlyrics.com/lyrics/{artist}/{title}.html"
-        self.write(f"URL: {url}")
-
-        self.write("Searching...")
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            self.write(f"Error: {str(e)}")
-            return
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-        # Lyrics are stored in the first empty div.
-        divs = soup.find_all("div", class_=None, id=None)
-        if not divs or len(divs) < 1:
-            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
-            return
-
-        lyrics = divs[0].get_text(separator="\n").strip()
-        if not lyrics:
-            self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
-            return
-        
-        return lyrics
-    
-    def download_from_xxx(self, artists, title):
-        package_name = "Xxx"
-
-        self.write(f"Using {package_name} (source1, source2).")
-
-        self.write("Searching...")
-        lyrics = None
         if not lyrics:
             self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
