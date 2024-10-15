@@ -218,7 +218,10 @@ class EZSpotifyLyrics:
         self.write(f"Query: {search_query}")
 
         self.write("Searching...")
-        lyrics = syncedlyrics.search(search_query, save_path=None)
+        lyrics = syncedlyrics.search(
+            search_query,
+            save_path=None,
+            providers=["musixmatch", "genius"])
         if not lyrics:
             self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
             return
