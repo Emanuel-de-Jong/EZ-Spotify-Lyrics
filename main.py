@@ -176,7 +176,7 @@ class EZSpotifyLyrics:
         title = re.sub(r'\s+', ' ', title).strip()
 
         artist_str = artist_str.split(" | ")[0]
-        artist_str = re.sub(r'[^a-zA-Z0-9, ]', '', artist_str)
+        # artist_str = re.sub(r'[^a-zA-Z0-9, ]', '', artist_str)
         artist_str = re.sub(r'\s+', ' ', artist_str).strip()
         artists = artist_str.split(", ")
 
@@ -200,7 +200,7 @@ class EZSpotifyLyrics:
             os.makedirs(save_dir_path, exist_ok=True)
 
             save_file_path = os.path.join(save_dir_path, f"{self.song_info_to_string(artists, title)}.lrc")
-            with open(save_file_path, 'w') as file:
+            with open(save_file_path, 'w', encoding='utf-8') as file:
                 file.write(lyrics)
 
             self.write(f"Lyrics saved at: {save_file_path}")
@@ -213,7 +213,7 @@ class EZSpotifyLyrics:
     def download_from_syncedlyrics(self, artists, title):
         package_name = "Syncedlyrics"
 
-        self.write(f"Using {package_name} (Musixmatch, Lrclib, NetEase, Megalobiz, Genius).")
+        self.write(f"Using {package_name} (Musixmatch, Genius, Lrclib, NetEase, Megalobiz).")
 
         # search_query = f"{title} {' '.join(artists)}"
         search_query = title
@@ -232,7 +232,8 @@ class EZSpotifyLyrics:
         self.write("Searching...")
         lyrics = syncedlyrics.search(
             search_query,
-            # providers=["musixmatch", "genius"],
+            # All providers but custom search order.
+            providers=["Musixmatch", "Genius", "Lrclib", "NetEase", "Megalobiz"],
             save_path=None)
         if not lyrics:
             self.write(package_name + self.LYRICS_PACKAGE_FAIL_MSG)
@@ -286,11 +287,6 @@ class EZSpotifyLyrics:
 
 
 if __name__ == "__main__":
-    print("Creating tkinter window.")
     root = TkinterDnD.Tk()
     app = EZSpotifyLyrics(root)
-
-    print("Starting main loop.")
     root.mainloop()
-
-    print("Exiting.")
