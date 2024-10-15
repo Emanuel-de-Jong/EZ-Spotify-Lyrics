@@ -1,31 +1,39 @@
 import os
+import re
 import tkinter as tk
 from tkinterdnd2 import DND_TEXT, TkinterDnD
 import requests
 from bs4 import BeautifulSoup
-import re
 import syncedlyrics
+
+LYRICS_PATH = "Lyrics"
+SHOULD_SAVE_LYRICS = True
+SHOULD_USE_SAVED_LYRICS = True
+WINDOW_WIDTH = 1600
+WINDOW_HEIGHT = 800
+FONT_SIZE = 16
 
 BLACKLISTED_TITLE_WORDS = [
     "remix", "mix", "live", "extended", "radio", "edit", "version", "feat", "ft", "featuring", "asot"
 ]
 
-LYRICS_PATH = "Lyrics"
-SHOULD_SAVE_LYRICS = True
+def create_window():
+    global root
+    global text_box
 
-root = TkinterDnD.Tk()
-root.title("EZ Spotify Lyrics")
-root.geometry("600x600")
+    root = TkinterDnD.Tk()
+    root.title("EZ Spotify Lyrics")
+    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
-scrollbar = tk.Scrollbar(root)
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    scrollbar = tk.Scrollbar(root)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-text_box = tk.Text(root, yscrollcommand=scrollbar.set)
-text_box.drop_target_register(DND_TEXT)
-text_box.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
-text_box.pack(expand=True, fill=tk.BOTH)
+    text_box = tk.Text(root, yscrollcommand=scrollbar.set)
+    text_box.drop_target_register(DND_TEXT)
+    text_box.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
+    text_box.pack(expand=True, fill=tk.BOTH)
 
-scrollbar.config(command=text_box.yview)
+    scrollbar.config(command=text_box.yview)
 
 def write(text):
     text_box.delete(1.0, tk.END)
@@ -34,7 +42,7 @@ def write(text):
 def get_lyrics(url):
     lyrics = None
     existing_lyrics_path = get_lyrics_dir_path(url)
-    if os.path.exists(existing_lyrics_path):
+    if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
         lyrics = get_existing_lyrics(existing_lyrics_path)
     
     if not lyrics:
@@ -43,7 +51,7 @@ def get_lyrics(url):
         if not lyrics:
             return
 
-    print(lyrics)
+    write(lyrics)
 
 def get_song_info(url):
     response = requests.get(url)
@@ -96,4 +104,6 @@ def get_existing_lyrics(dir_path):
         return file.read()
 
 if __name__ == "__main__":
+    create_window()
+
     root.mainloop()
