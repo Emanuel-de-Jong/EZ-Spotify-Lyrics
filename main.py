@@ -30,7 +30,7 @@ class EZSpotifyLyrics:
 
         self.root.drop_target_register(DND_TEXT)
         self.root.dnd_bind('<<Drop>>', lambda e: self.handle_new_url(e.data))
-        self.root.bind("<Control-v>", lambda e: self.handle_new_url(root.clipboard_get().strip()))
+        self.root.bind("<Control-v>", lambda e: self.handle_new_url(root.clipboard_get()))
 
         self.scrollbar = tk.Scrollbar(root)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -53,6 +53,16 @@ class EZSpotifyLyrics:
 
     def get_lyrics(self, url):
         self.write("STARTING", True)
+
+        url = url.strip()
+        if not url:
+            self.write("The given URL is empty.")
+            return
+        
+        if "spotify.com/track" not in url:
+            self.write(f"Invalid Spotify URL: {url}")
+            self.write("It should look like: https://open.spotify.com/track/xyz")
+            return
 
         # Remove any query parameters.
         url = url.split("?")[0]
@@ -90,20 +100,26 @@ class EZSpotifyLyrics:
             return
         
         self.write(f"Saved lyrics found at: {file_path}")
-        
         with open(file_path, 'r') as file:
-            return file.read()
+            lyrics = file.read().strip()
+            if not lyrics:
+                self.write("Saved lyrics file is empty or corrupted.")
+                return
+            
+            return lyrics
 
     def get_song_info(self, url):
-        if "spotify.com/track" not in url:
-            self.write(f"Invalid Spotify URL: {url}")
-            self.write("It should look like: https://open.spotify.com/track/xyz")
+        self.write(f"Getting song information from: {url}")
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            self.write(f"Failed to fetch song information. HTTP Status: {response.status_code}")
             return
 
-        self.write(f"Getting song information from: {url}")
-        response = requests.get(url)
         soup = BeautifulSoup(response.text, 'html.parser')
-        page_title = soup.title.string
+        page_title = soup.title.string if soup.title else None
+        if not page_title:
+            self.write("Could not retrieve page title. Invalid response from Spotify.")
+            return
         self.write(f"Page title: {page_title}")
 
         split_str = " song by "
