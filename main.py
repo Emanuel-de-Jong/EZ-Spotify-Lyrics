@@ -194,8 +194,9 @@ class EZSpotifyLyrics:
         return lyrics
     
     def download_from_syncedlyrics(self, artists, title):
+        self.write(f"Using syncedlyrics (Musixmatch, Lrclib, NetEase, Megalobiz, Genius).")
         search_query = f"{title} {' '.join(artists)}"
-        self.write(f"Using syncedlyrics with query: \"{search_query}\"")
+        self.write(f"Query: \"{search_query}\"")
 
         self.write("Searching...")
         lyrics = syncedlyrics.search(search_query, save_path=None)
@@ -206,8 +207,9 @@ class EZSpotifyLyrics:
         return lyrics
     
     def download_from_xxx(self, artists, title):
-        self.write(f"Using xxx with...")
+        self.write(f"Using xxx (source1, source2).")
 
+        self.write("Searching...")
         lyrics = None
         if not lyrics:
             self.write("Xxx could not find lyrics.")
