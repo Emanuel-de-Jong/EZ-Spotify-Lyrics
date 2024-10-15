@@ -1,5 +1,6 @@
 import os
 import re
+import csv
 import threading
 import tkinter as tk
 from tkinterdnd2 import DND_TEXT, TkinterDnD
@@ -8,6 +9,7 @@ from bs4 import BeautifulSoup
 import syncedlyrics
 
 LYRICS_PATH = "Lyrics"
+CSV_FILE = "lyrics_data.csv"
 SHOULD_SAVE_LYRICS = True
 SHOULD_USE_SAVED_LYRICS = True
 SHOULD_CUT_TITLE_AT_DASH = True
@@ -46,6 +48,22 @@ class EZSpotifyLyrics:
 
         self.scrollbar.config(command=self.text_box.yview)
 
+        self.lyrics_data = self.load_lyrics_data()
+
+    def save_lyrics_data(self):
+        with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            for url, file_name in self.lyrics_data.items():
+                writer.writerow([url, file_name])
+
+    def load_lyrics_data(self):
+        if not os.path.exists(CSV_FILE):
+            return {}
+        
+        with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            return {row[0]: row[1] for row in reader}
+
     def handle_drop(self, event):
         if self.is_lyrics_search_ongoing:
             return
@@ -59,7 +77,7 @@ class EZSpotifyLyrics:
         try:
             self.handle_new_url(self.root.clipboard_get())
         except tk.TclError:
-            self.write("Your clipboard does not have a url in it.", True)
+            self.write("Your clipboard does not have a URL in it.", True)
 
     def write(self, text="", should_clear=False):
         text += "\n"
@@ -73,8 +91,9 @@ class EZSpotifyLyrics:
     def start_lyrics_search(self, url):
         self.is_lyrics_search_ongoing = True
         self.get_lyrics(url)
+        self.save_lyrics_data()
         self.is_lyrics_search_ongoing = False
-        
+
         self.write("\nDrag & drop or CTRL+V a new Spotify link here to get the next lyrics.")
 
     def get_lyrics(self, url):
@@ -95,10 +114,17 @@ class EZSpotifyLyrics:
 
         lyrics = None
         song_info_str = None
-        existing_lyrics_path = self.get_lyrics_dir_path(url)
-        if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
-            lyrics, song_info_str = self.get_existing_lyrics(existing_lyrics_path)
-        
+        if SHOULD_USE_SAVED_LYRICS and url in self.lyrics_data:
+            file_name = self.lyrics_data[url]
+            if not file_name:
+                self.write("Lyrics search was previously unsuccessful for this URL.")
+                return
+            
+            lyrics = self.get_existing_lyrics(file_name)
+            song_info_str = file_name.replace(".lrc", "")
+
+        self.lyrics_data[url] = ""
+
         if not lyrics:
             artists, title = self.get_song_info(url)
             if not artists or not title:
@@ -110,35 +136,28 @@ class EZSpotifyLyrics:
             if not lyrics:
                 return
 
+            self.lyrics_data[url] = f"{song_info_str}.lrc"
+
         self.write(song_info_str, True)
         self.write(f"\n{lyrics}")
 
-    def get_lyrics_dir_path(self, url):
-        dir_name = url.split('/')[-1]
-        return os.path.join(LYRICS_PATH, dir_name)
-
-    def get_existing_lyrics(self, dir_path):
+    def get_existing_lyrics(self, file_name):
         self.write("Using saved lyrics.")
 
-        file_path = None
-        file_name = None
-        for file_name in os.listdir(dir_path):
-            if file_name.endswith('.lrc'):
-                file_path = os.path.join(dir_path, file_name)
-                break
-        if not file_path:
-            self.write("Could not find saved lyrics.")
+        file_path = os.path.join(LYRICS_PATH, file_name)
+        if not os.path.exists(file_path):
+            self.write("Saved lyrics file is missing.")
             return
 
         self.write(f"Saved lyrics found at: {file_path}")
 
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             lyrics = file.read().strip()
             if not lyrics:
                 self.write("Saved lyrics file is empty or corrupted.")
                 return
 
-        return lyrics, file_name[:-4]
+        return lyrics
 
     def get_song_info(self, url):
         self.write(f"Getting song information from the URL page...")
@@ -196,17 +215,16 @@ class EZSpotifyLyrics:
         self.write(f"Lyrics found")
 
         if SHOULD_SAVE_LYRICS:
-            save_dir_path = self.get_lyrics_dir_path(url)
-            os.makedirs(save_dir_path, exist_ok=True)
-
-            save_file_path = os.path.join(save_dir_path, f"{self.song_info_to_string(artists, title)}.lrc")
+            save_file_name = f"{self.song_info_to_string(artists, title)}.lrc"
+            save_file_path = os.path.join(LYRICS_PATH, save_file_name)
+            os.makedirs(LYRICS_PATH, exist_ok=True)
             with open(save_file_path, 'w', encoding='utf-8') as file:
                 file.write(lyrics)
 
             self.write(f"Lyrics saved at: {save_file_path}")
 
         return lyrics
-    
+
     def song_info_to_string(self, artists, title):
         return f"{', '.join(artists)} - {title}"
     
