@@ -169,6 +169,8 @@ class EZSpotifyLyrics:
                         self.write(f"\nProcessing track {idx+1}/{len(tracks)}: {song_info_str}")
                         self.process_track(track_id, artists, title)
 
+                        self.save_lyrics_data()
+
                         # 5 second delay every 10 tracks to avoid rate limiting.
                         if (idx + 1) % 10 == 0:
                             self.write(f"\nPausing for 5 seconds to avoid rate limiting...")
