@@ -6,7 +6,6 @@ from tkinterdnd2 import DND_TEXT, TkinterDnD
 import requests
 from bs4 import BeautifulSoup
 import syncedlyrics
-import lyricwikia
 
 LYRICS_PATH = "Lyrics"
 SHOULD_SAVE_LYRICS = True
@@ -175,8 +174,8 @@ class EZSpotifyLyrics:
 
     def download_lyrics(self, artists, title, url):
         lyrics = self.download_from_syncedlyrics(artists, title)
-        if not lyrics:
-            lyrics = self.download_from_lyricwikia(artists, title)
+        # if not lyrics:
+        #     lyrics = self.download_from_xxx(artists, title)
         if not lyrics:
             return
 
@@ -206,17 +205,12 @@ class EZSpotifyLyrics:
 
         return lyrics
     
-    def download_from_lyricwikia(self, artists, title):
-        artist = artists[0]
-        self.write(f"Using lyricwikia with artist: \"{artist}\" and title: \"{title}\"")
+    def download_from_xxx(self, artists, title):
+        self.write(f"Using xxx with...")
 
-        try:
-            lyrics = lyricwikia.get_lyrics(artists[0], title)
-        except lyricwikia.LyricsNotFound:
-            lyrics = None
-        
+        lyrics = None
         if not lyrics:
-            self.write("Lyricwikia could not find lyrics.")
+            self.write("Xxx could not find lyrics.")
             return
 
         return lyrics
