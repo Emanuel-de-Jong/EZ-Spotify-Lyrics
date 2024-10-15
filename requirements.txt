@@ -1,0 +1,4 @@
+tkinterdnd2
+requests
+beautifulsoup4
+syncedlyrics
