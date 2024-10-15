@@ -6,6 +6,7 @@ from tkinterdnd2 import DND_TEXT, TkinterDnD
 import requests
 from bs4 import BeautifulSoup
 import syncedlyrics
+import lyricwikia
 
 LYRICS_PATH = "Lyrics"
 SHOULD_SAVE_LYRICS = True
@@ -66,12 +67,13 @@ class EZSpotifyLyrics:
 
     def handle_new_url(self, url):
         threading.Thread(target=self.start_lyrics_search, args=(url,)).start()
-        self.write("\nDrag & drop or CTRL+V a new Spotify link here to get the next lyrics.")
 
     def start_lyrics_search(self, url):
         self.is_lyrics_search_ongoing = True
         self.get_lyrics(url)
         self.is_lyrics_search_ongoing = False
+        
+        self.write("\nDrag & drop or CTRL+V a new Spotify link here to get the next lyrics.")
 
     def get_lyrics(self, url):
         self.write("URL received. Starting lyrics search.", True)
@@ -172,22 +174,47 @@ class EZSpotifyLyrics:
         return artists, title
 
     def download_lyrics(self, artists, title, url):
-        search_query = f"{title} {' '.join(artists)}"
-        self.write(f"Using syncedlyrics with query: {search_query}")
-
-        save_path = None
-        if SHOULD_SAVE_LYRICS:
-            save_path = self.get_lyrics_dir_path(url)
-            os.makedirs(save_path, exist_ok=True)
-            save_path = os.path.join(save_path, f"{', '.join(artists)} - {title}.lrc")
-
-        self.write("Searching...")
-        lyrics = syncedlyrics.search(search_query, save_path=save_path)
+        lyrics = self.download_from_syncedlyrics(artists, title)
         if not lyrics:
-            self.write("Syncedlyrics could not find lyrics for the song.")
+            lyrics = self.download_from_lyricwikia(artists, title)
+        if not lyrics:
             return
 
-        self.write(f"Lyrics found and saved at: {save_path}")
+        self.write(f"Lyrics found")
+
+        if SHOULD_SAVE_LYRICS:
+            save_dir_path = self.get_lyrics_dir_path(url)
+            os.makedirs(save_dir_path, exist_ok=True)
+
+            save_file_path = os.path.join(save_dir_path, f"{', '.join(artists)} - {title}.lrc")
+            with open(save_file_path, 'w') as file:
+                file.write(lyrics)
+
+            self.write(f"Lyrics saved at: {save_file_path}")
+
+        return lyrics
+    
+    def download_from_syncedlyrics(self, artists, title):
+        search_query = f"{title} {' '.join(artists)}"
+        self.write(f"Using syncedlyrics with query: \"{search_query}\"")
+
+        self.write("Searching...")
+        lyrics = syncedlyrics.search(search_query, save_path=None)
+        if not lyrics:
+            self.write("Syncedlyrics could not find lyrics.")
+            return
+
+        return lyrics
+    
+    def download_from_lyricwikia(self, artists, title):
+        artist = artists[0]
+        self.write(f"Using lyricwikia with artist: \"{artist}\" and title: \"{title}\"")
+
+        lyrics = lyricwikia.get_lyrics(artists[0], title)
+        if not lyrics:
+            self.write("Lyricwikia could not find lyrics.")
+            return
+
         return lyrics
 
 
