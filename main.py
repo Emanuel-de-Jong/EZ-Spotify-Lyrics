@@ -5,13 +5,13 @@ from bs4 import BeautifulSoup
 import re
 import syncedlyrics
 
+BLACKLISTED_TITLE_WORDS = [
+    "remix", "mix", "live", "extended", "radio", "edit", "version", "feat", "ft", "featuring", "asot"
+]
 
 root = TkinterDnD.Tk()
 root.title("EZ Spotify Lyrics")
-root.geometry("600x800")
-
-# main_frame = tk.Frame(root, width=600, height=1000)
-# main_frame.pack()
+root.geometry("600x600")
 
 scrollbar = tk.Scrollbar(root)
 scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -21,32 +21,36 @@ text_box.drop_target_register(DND_TEXT)
 text_box.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
 text_box.pack(expand=True, fill=tk.BOTH)
 
-# text.insert(tk.END, "Hello")
-
 scrollbar.config(command=text_box.yview)
 
 def write(text):
+    text_box.delete(1.0, tk.END)
     text_box.insert(tk.END, text)
 
 def get_lyrics(url):
-    title = get_title(url)
+    artists, title = get_song_info(url)
+    print(artists)
     print(title)
 
-def get_title(url):
+def get_song_info(url):
     response = requests.get(url)
-
-    print(response.text)
-
     soup = BeautifulSoup(response.text, 'html.parser')
+    page_title = soup.title.string
+    print(page_title)
 
-    title_tag = soup.find('h1', class_='encore-text-headline-large')
-    if not title_tag:
-        write(f"Can't find title in page")
-        return
+    split_str = " song by "
+    if " and lyrics " in page_title:
+        split_str = " song and lyrics by "
+    title, artist_str = page_title.split(split_str)
 
-    title = title_tag.get_text()
-    title = re.sub(r'[^a-zA-Z0-9 ]', '', title).strip().lower()
-    return title
+    title = re.sub(r'[^a-zA-Z0-9 ]', '', title).lower()
+    for word in BLACKLISTED_TITLE_WORDS:
+        title = title.replace(word, '')
+    title = re.sub(r'\s+', ' ', title).strip()
+
+    artists = artist_str.split(" | ")[0].split(", ")
+
+    return artists, title
 
 if __name__ == "__main__":
     root.mainloop()
