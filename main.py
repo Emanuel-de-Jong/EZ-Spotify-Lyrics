@@ -53,6 +53,21 @@ def get_lyrics(url):
 
     write(lyrics)
 
+def get_lyrics_dir_path(url):
+    dir_name = url.split('/')[-1]
+    return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
+
+def get_existing_lyrics(dir_path):
+    file_path = None
+    for file_name in os.listdir(dir_path):
+        if file_name.endswith('.lrc'):
+            file_path = os.path.join(dir_path, file_name)
+    if not file_path:
+        return
+    
+    with open(file_path, 'r') as file:
+        return file.read()
+
 def get_song_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -87,21 +102,6 @@ def download_lyrics(artists, title, url):
         return
     
     return lyrics
-
-def get_lyrics_dir_path(url):
-    dir_name = url.split('/')[-1]
-    return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
-
-def get_existing_lyrics(dir_path):
-    file_path = None
-    for file_name in os.listdir(dir_path):
-        if file_name.endswith('.lrc'):
-            file_path = os.path.join(dir_path, file_name)
-    if not file_path:
-        return
-    
-    with open(file_path, 'r') as file:
-        return file.read()
 
 if __name__ == "__main__":
     create_window()
