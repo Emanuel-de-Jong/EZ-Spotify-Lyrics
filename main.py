@@ -12,134 +12,135 @@ SHOULD_SAVE_LYRICS = True
 SHOULD_USE_SAVED_LYRICS = True
 WINDOW_WIDTH = 1600
 WINDOW_HEIGHT = 800
-FONT_SIZE = 16
+FONT_SIZE = 20
 
-BLACKLISTED_TITLE_WORDS = [
+TITLE_WORD_BLACKLIST = [
     "remix", "mix", "live", "extended", "radio", "edit", "version", "feat", "ft", "featuring", "asot"
 ]
 
+class EZSpotifyLyrics:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("EZ Spotify Lyrics")
+        self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
-def create_window():
-    global root
-    global text_box
+        self.root.drop_target_register(DND_TEXT)
+        self.root.dnd_bind('<<Drop>>', lambda e: self.get_lyrics(e.data))
+        self.root.bind("<Control-v>", lambda e: self.get_lyrics(root.clipboard_get().strip()))
 
-    root = TkinterDnD.Tk()
-    root.title("EZ Spotify Lyrics")
-    root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
+        self.scrollbar = tk.Scrollbar(root)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    root.drop_target_register(DND_TEXT)
-    root.dnd_bind('<<Drop>>', lambda e: get_lyrics(e.data))
-    root.bind("<Control-v>", lambda e: get_lyrics(root.clipboard_get().strip()))
+        self.text_box = tk.Text(root, yscrollcommand=self.scrollbar.set, font=("Helvetica", FONT_SIZE))
+        self.text_box.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+        self.text_box.insert(tk.END, "Drag & drop or CTRL+V a Spotify link here to get the lyrics.")
 
-    scrollbar = tk.Scrollbar(root)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scrollbar.config(command=self.text_box.yview)
 
-    text_box = tk.Text(root, yscrollcommand=scrollbar.set, font=("Helvetica", FONT_SIZE))
-    text_box.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
-    text_box.insert(tk.END, "Drag & drop or CTRL+V a Spotify link here to get the lyrics.")
+    def write(self, text="", should_clear=False):
+        text += "\n"
+        if should_clear:
+            self.text_box.delete(1.0, tk.END)
+        self.text_box.insert(tk.END, text)
 
-    scrollbar.config(command=text_box.yview)
+    def get_lyrics(self, url):
+        self.write("STARTING", True)
 
-def write(text="", should_clear=False):
-    text += "\n"
-    if should_clear:
-        text_box.delete(1.0, tk.END)
-    text_box.insert(tk.END, text)
+        # Remove any query parameters.
+        url = url.split("?")[0]
 
-def get_lyrics(url):
-    write("STARTING", True)
-
-    # Remove any query parameters.
-    url = url.split("?")[0]
-
-    lyrics = None
-    existing_lyrics_path = get_lyrics_dir_path(url)
-    if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
-        write("Using saved lyrics.")
-        lyrics = get_existing_lyrics(existing_lyrics_path)
-    
-    if not lyrics:
-        write("Getting lyrics from the internet.")
-        artists, title = get_song_info(url)
-        lyrics = download_lyrics(artists, title, url)
+        lyrics = None
+        existing_lyrics_path = self.get_lyrics_dir_path(url)
+        if SHOULD_USE_SAVED_LYRICS and os.path.exists(existing_lyrics_path):
+            self.write("Using saved lyrics.")
+            lyrics = self.get_existing_lyrics(existing_lyrics_path)
+        
         if not lyrics:
+            self.write("Getting lyrics from the internet.")
+            artists, title = self.get_song_info(url)
+            if not artists or not title:
+                return
+            
+            lyrics = self.download_lyrics(artists, title, url)
+            if not lyrics:
+                return
+
+        self.write()
+        self.write(lyrics)
+
+    def get_lyrics_dir_path(self, url):
+        dir_name = url.split('/')[-1]
+        return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
+
+    def get_existing_lyrics(self, dir_path):
+        file_path = None
+        for file_name in os.listdir(dir_path):
+            if file_name.endswith('.lrc'):
+                file_path = os.path.join(dir_path, file_name)
+        if not file_path:
+            self.write("Could not find saved lyrics.")
+            return
+        
+        self.write(f"Saved lyrics found at: {file_path}")
+        
+        with open(file_path, 'r') as file:
+            return file.read()
+
+    def get_song_info(self, url):
+        if "spotify.com/track" not in url:
+            self.write(f"Invalid Spotify URL: {url}")
+            self.write("It should look like: https://open.spotify.com/track/xyz")
             return
 
-    write()
-    write(lyrics)
+        self.write(f"Getting song information from: {url}")
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        page_title = soup.title.string
+        self.write(f"Page title: {page_title}")
 
-def get_lyrics_dir_path(url):
-    dir_name = url.split('/')[-1]
-    return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
+        split_str = " song by "
+        if " and lyrics " in page_title:
+            split_str = " song and lyrics by "
+        title, artist_str = page_title.split(split_str)
 
-def get_existing_lyrics(dir_path):
-    file_path = None
-    for file_name in os.listdir(dir_path):
-        if file_name.endswith('.lrc'):
-            file_path = os.path.join(dir_path, file_name)
-    if not file_path:
-        write("Could not find saved lyrics.")
-        return
-    
-    write(f"Saved lyrics found at: {file_path}")
-    
-    with open(file_path, 'r') as file:
-        return file.read()
+        # Remove all non-alphanumeric characters.
+        title = re.sub(r'[^a-zA-Z0-9 ]', '', title)
+        for word in TITLE_WORD_BLACKLIST:
+            word_variations = [word, word.capitalize(), word.upper()]
+            for word_variation in word_variations:
+                title = title.replace(word_variation, '')
+        # Combine multiple spaces into one.
+        title = re.sub(r'\s+', ' ', title).strip()
 
-def get_song_info(url):
-    if "spotify.com/track" not in url:
-        write(f"Invalid Spotify URL: {url}")
-        write("It should look like: https://open.spotify.com/track/xyz")
-        return
+        artists = artist_str.split(" | ")[0].split(", ")
 
-    write(f"Getting song information from: {url}")
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    page_title = soup.title.string
-    write(f"Page title: {page_title}")
+        self.write(f"Title: {title}")
+        self.write(f"Aritsts: {', '.join(artists)}")
+        return artists, title
 
-    split_str = " song by "
-    if " and lyrics " in page_title:
-        split_str = " song and lyrics by "
-    title, artist_str = page_title.split(split_str)
+    def download_lyrics(self, artists, title, url):
+        search_query = f"{title} {' '.join(artists)}"
+        self.write(f"Searching for lyrics using syncedlyrics with query: {search_query}")
+        
+        save_path = None
+        if SHOULD_SAVE_LYRICS:
+            save_path = self.get_lyrics_dir_path(url)
+            os.makedirs(save_path, exist_ok=True)
+            save_path += f"{', '.join(artists)} - {title}.lrc"
 
-    # Remove all non-alphanumeric characters.
-    title = re.sub(r'[^a-zA-Z0-9 ]', '', title)
-    for word in BLACKLISTED_TITLE_WORDS:
-        word_variations = [word, word.capitalize(), word.upper()]
-        for word_variation in word_variations:
-            title = title.replace(word_variation, '')
-    # Combine multiple spaces into one.
-    title = re.sub(r'\s+', ' ', title).strip()
-
-    artists = artist_str.split(" | ")[0].split(", ")
-
-    write(f"Title: {title}")
-    write(f"Aritsts: {', '.join(artists)}")
-    return artists, title
-
-def download_lyrics(artists, title, url):
-    search_query = f"{title} {' '.join(artists)}"
-    write(f"Searching for lyrics using syncedlyrics with query: {search_query}")
-    
-    save_path = None
-    if SHOULD_SAVE_LYRICS:
-        save_path = get_lyrics_dir_path(url)
-        os.makedirs(save_path, exist_ok=True)
-        save_path += f"{', '.join(artists)} - {title}.lrc"
-
-    lyrics = syncedlyrics.search(search_query, save_path=save_path)
-    if not lyrics:
-        write("Syncedlyrics could not find lyrics for the song.")
-        return
-    
-    write(f"Lyrics found and saved at: {save_path}")
-    return lyrics
+        lyrics = syncedlyrics.search(search_query, save_path=save_path)
+        if not lyrics:
+            self.write("Syncedlyrics could not find lyrics for the song.")
+            return
+        
+        self.write(f"Lyrics found and saved at: {save_path}")
+        return lyrics
 
 
 if __name__ == "__main__":
     print("Creating tkinter window.")
-    create_window()
+    root = TkinterDnD.Tk()
+    app = EZSpotifyLyrics(root)
 
     print("Starting main loop.")
     root.mainloop()
