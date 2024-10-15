@@ -23,14 +23,16 @@ TITLE_WORD_BLACKLIST = [
 ]
 
 class EZSpotifyLyrics:
+    is_lyrics_search_ongoing = False
+
     def __init__(self, root):
         self.root = root
         self.root.title("EZ Spotify Lyrics")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
 
         self.root.drop_target_register(DND_TEXT)
-        self.root.dnd_bind('<<Drop>>', lambda e: self.handle_new_url(e.data))
-        self.root.bind("<Control-v>", lambda e: self.handle_new_url(root.clipboard_get()))
+        self.root.dnd_bind('<<Drop>>', self.handle_drop)
+        self.root.bind("<Control-v>", self.handle_paste)
 
         self.scrollbar = tk.Scrollbar(root)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -41,6 +43,21 @@ class EZSpotifyLyrics:
 
         self.scrollbar.config(command=self.text_box.yview)
 
+    def handle_drop(self, event):
+        if self.is_lyrics_search_ongoing:
+            return
+        
+        self.handle_new_url(event.data)
+
+    def handle_paste(self):
+        if self.is_lyrics_search_ongoing:
+            return
+        
+        try:
+            self.handle_new_url(self.root.clipboard_get())
+        except tk.TclError:
+            self.write("Your clipboard does not have a url in it.", True)
+
     def write(self, text="", should_clear=False):
         text += "\n"
         if should_clear:
@@ -48,16 +65,19 @@ class EZSpotifyLyrics:
         self.text_box.insert(tk.END, text)
 
     def handle_new_url(self, url):
-        # Start new thread so the UI doesn't freeze.
-        threading.Thread(target=self.get_lyrics, args=(url,)).start()
+        threading.Thread(target=self.start_lyrics_search, args=(url,)).start()
         self.write("\nDrag & drop or CTRL+V a new Spotify link here to get the next lyrics.")
+
+    def start_lyrics_search(self, url):
+        self.is_lyrics_search_ongoing = True
+        self.get_lyrics(url)
+        self.is_lyrics_search_ongoing = False
 
     def get_lyrics(self, url):
         self.write("URL received. Starting lyrics search.", True)
 
         # Remove any query parameters.
-        url = url.split("?")[0]
-        url = url.strip()
+        url = url.split("?")[0].strip()
 
         self.write(url)
 
@@ -78,7 +98,7 @@ class EZSpotifyLyrics:
             artists, title = self.get_song_info(url)
             if not artists or not title:
                 return
-            
+
             lyrics = self.download_lyrics(artists, title, url)
             if not lyrics:
                 return
@@ -87,7 +107,7 @@ class EZSpotifyLyrics:
 
     def get_lyrics_dir_path(self, url):
         dir_name = url.split('/')[-1]
-        return f"{LYRICS_PATH}{os.sep}{dir_name}{os.sep}"
+        return os.path.join(LYRICS_PATH, dir_name)
 
     def get_existing_lyrics(self, dir_path):
         self.write("Using saved lyrics.")
@@ -99,7 +119,7 @@ class EZSpotifyLyrics:
         if not file_path:
             self.write("Could not find saved lyrics.")
             return
-        
+
         self.write(f"Saved lyrics found at: {file_path}")
 
         with open(file_path, 'r') as file:
@@ -107,14 +127,17 @@ class EZSpotifyLyrics:
             if not lyrics:
                 self.write("Saved lyrics file is empty or corrupted.")
                 return
-            
+
             return lyrics
 
     def get_song_info(self, url):
         self.write(f"Getting song information from the URL page...")
-        response = requests.get(url, timeout=10)
-        if response.status_code != 200:
-            self.write(f"Failed to fetch song information. HTTP Status: {response.status_code}")
+        try:
+            response = requests.get(url, timeout=10)
+            # Raise exception for non-2xx status codes
+            response.raise_for_status()
+        except requests.RequestException as e:
+            self.write(f"Error: {str(e)}")
             return
 
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -127,6 +150,10 @@ class EZSpotifyLyrics:
         split_str = " song by "
         if " and lyrics " in page_title:
             split_str = " song and lyrics by "
+        if split_str not in page_title:
+            self.write("Could not extract song information from the page title.")
+            return
+
         title, artist_str = page_title.split(split_str)
 
         # Remove all non-alphanumeric characters.
@@ -147,19 +174,19 @@ class EZSpotifyLyrics:
     def download_lyrics(self, artists, title, url):
         search_query = f"{title} {' '.join(artists)}"
         self.write(f"Using syncedlyrics with query: {search_query}")
-        
+
         save_path = None
         if SHOULD_SAVE_LYRICS:
             save_path = self.get_lyrics_dir_path(url)
             os.makedirs(save_path, exist_ok=True)
-            save_path += f"{', '.join(artists)} - {title}.lrc"
+            save_path = os.path.join(save_path, f"{', '.join(artists)} - {title}.lrc")
 
         self.write("Searching...")
         lyrics = syncedlyrics.search(search_query, save_path=save_path)
         if not lyrics:
             self.write("Syncedlyrics could not find lyrics for the song.")
             return
-        
+
         self.write(f"Lyrics found and saved at: {save_path}")
         return lyrics
 
