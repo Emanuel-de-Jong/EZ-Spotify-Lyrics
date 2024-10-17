@@ -99,10 +99,16 @@ class EZSpotifyLyrics:
 
     def write(self, text="", should_clear=False):
         text += "\n"
-        if should_clear:
-            self.text_box.delete(1.0, tk.END)
-        self.text_box.insert(tk.END, text)
-        self.text_box.see(tk.END)  # Auto-scroll to the end
+        
+        def update_text_box():
+            if should_clear:
+                self.text_box.delete(1.0, tk.END)
+            self.text_box.insert(tk.END, text)
+            self.text_box.see(tk.END)  # Auto-scroll to the end
+
+        # Check if the window has been destroyed before trying to update the UI
+        if self.text_box.winfo_exists():
+            self.text_box.after(0, update_text_box)
 
     def handle_new_url(self, url):
         threading.Thread(target=self.start_lyrics_search, args=(url,)).start()
