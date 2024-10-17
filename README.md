@@ -8,5 +8,8 @@
 2. `python main.py`.
 3. Drag & drop a song from Spotify to the app.
 
+## To-do
+- Lololyrics source.
+
 ## Credits
 Uses [syncedlyrics](https://github.com/moehmeni/syncedlyrics) to find and download the lyrics.

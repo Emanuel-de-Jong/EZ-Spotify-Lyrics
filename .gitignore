@@ -1,5 +1,5 @@
 Lyrics/
-lyrics_data.csv
+*.csv
 .cache
 
 # Venv
