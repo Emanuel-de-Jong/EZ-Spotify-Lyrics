@@ -159,6 +159,7 @@ class EZSpotifyLyrics:
                     return
 
                 self.write(f"Found {len(tracks)} tracks in the playlist.")
+                tracks_since_timeout = 0
                 for idx, item in enumerate(tracks):
                     track = item.get('track')
                     if track and 'id' in track:
@@ -167,14 +168,18 @@ class EZSpotifyLyrics:
                         artists = [artist['name'] for artist in track.get('artists', [])]
                         song_info_str = f"{', '.join(artists)} - {title}"
                         self.write(f"\nProcessing track {idx+1}/{len(tracks)}: {song_info_str}")
-                        self.process_track(track_id, artists, title)
+                        is_used_local = self.process_track(track_id, artists, title)
+
+                        if not is_used_local:
+                            tracks_since_timeout += 1
 
                         self.save_lyrics_data()
 
-                        # 5 second delay every 10 tracks to avoid rate limiting.
-                        if (idx + 1) % 10 == 0:
-                            self.write(f"\nPausing for 5 seconds to avoid rate limiting...")
-                            time.sleep(5)
+                        # delay every x tracks to avoid rate limiting.
+                        if tracks_since_timeout >= 10:
+                            tracks_since_timeout = 0
+                            self.write(f"\nPausing to avoid rate limiting...")
+                            time.sleep(60)
                     else:
                         self.write(f"Skipping invalid track entry at position {idx+1}")
             else:
@@ -258,22 +263,26 @@ class EZSpotifyLyrics:
         lyrics = None
         song_info_str = f"{', '.join(artists)} - {title}"
         key = track_id
+
+        is_used_local = True
         if SHOULD_USE_SAVED_LYRICS and key in self.lyrics_data:
             file_name = self.lyrics_data[key]
             if not file_name:
                 self.write(f"Lyrics search was previously unsuccessful for {song_info_str}.")
-                return
+                return is_used_local
 
             lyrics = self.load_lyrics(file_name)
             song_info_str = file_name.replace(".lrc", "")
 
         if not lyrics:
+            is_used_local = False
+
             self.lyrics_data[key] = ""
 
             lyrics = self.download_lyrics(artists, title)
             if not lyrics:
                 self.write(f"Could not find lyrics for {song_info_str}.")
-                return
+                return is_used_local
 
             file_name = f"{self.safe_filename(song_info_str)}.lrc"
             self.save_lyrics(lyrics, file_name)
@@ -281,6 +290,8 @@ class EZSpotifyLyrics:
 
         self.write(song_info_str)
         self.write(f"\n{lyrics}")
+
+        return is_used_local
 
     def safe_filename(self, filename):
         # Replace invalid characters for filenames
